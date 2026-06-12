@@ -48,6 +48,18 @@
       pointer-events: none !important;
     }
 
+    /* AR 활성화 시 배경 비디오 레이아웃 및 z-index 강제 고정 */
+    body.ar-active {
+      background: transparent !important;
+    }
+    body.ar-active video {
+      position: fixed !important;
+      top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
+      object-fit: cover !important;
+      z-index: 0 !important;
+    }
+
     /* ══════════════════════════════
        CSS 3D 디오라마 스테이지
     ══════════════════════════════ */
@@ -1349,7 +1361,7 @@
         isDragging = false;
         isMultiTouch = true;
         
-        // 핀치 거리 측정
+        // 핀치 줌
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         touchStartDist = Math.sqrt(dx*dx + dy*dy);
@@ -1726,6 +1738,10 @@
     let originalHtmlClass = '';
 
     async function startAR() {
+      // 💡 [iOS Safari 보안 정책 대응] 
+      // 비동기 딜레이가 발생하기 전에 사용자 인터랙션 동기적 컨텍스트에서 자이로 권한을 즉시 요청합니다.
+      await requestGyroPermission();
+
       const startBtn = document.getElementById('btn-start');
       startBtn.textContent = '카메라 권한 확인 중...';
       startBtn.disabled = true;
@@ -1778,6 +1794,9 @@
         originalHtmlStyle = document.documentElement.getAttribute('style') || '';
         originalHtmlClass = document.documentElement.className || '';
 
+        // AR 활성화 클래스 추가하여 비디오 가시성 확보 및 body 배경 투명화
+        document.body.classList.add('ar-active');
+
         // UI 모드 대기 상태 표시
         document.getElementById('splash').classList.add('gone');
         document.getElementById('scanning-overlay').style.display = 'block';
@@ -1785,9 +1804,6 @@
         document.getElementById('crosshair').classList.add('show', 'pulse');
         
         setStatus('🔍 Hiro 마커를 찾아 카메라 화면 중앙에 비춰주세요');
-
-        // iOS 13+ 등 대응 자이로 권한 획득 호출
-        await requestGyroPermission();
 
         // 2단계: 동적으로 A-Frame + AR.js 씬 생성 및 인젝션
         const sceneEl = document.createElement('a-scene');
@@ -1910,6 +1926,9 @@
 
       const arCanvases = document.querySelectorAll('.a-canvas, .arjs-loader');
       arCanvases.forEach(el => el.parentNode.removeChild(el));
+
+      // AR 활성화 클래스 제거
+      document.body.classList.remove('ar-active');
 
       // 4. HTML/Body 스타일 및 오버플로우 값 원래 상태로 원복
       document.body.setAttribute('style', originalBodyStyle);
