@@ -57,7 +57,7 @@
       top: 0 !important; left: 0 !important;
       width: 100vw !important; height: 100vh !important;
       object-fit: cover !important;
-      z-index: 0 !important;
+      z-index: 1 !important;
     }
 
     /* ══════════════════════════════
@@ -1762,24 +1762,6 @@
           throw new Error('SecurityError: 카메라 접근은 HTTPS 환경 또는 localhost에서만 허용됩니다. 현재 프로토콜: ' + window.location.protocol);
         }
 
-        // 1단계: 카메라 권한 확인용 임시 스트림 생성 및 즉시 해제 (리소스 락 방지)
-        let testStream;
-        try {
-          testStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: 'environment' } },
-            audio: false
-          });
-        } catch (err1) {
-          console.warn("후면 카메라 획득 실패, 기본 카메라 대체 시도:", err1);
-          testStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false
-          });
-        }
-
-        // 스트림 권한 획득 완료 후 즉시 클리어
-        testStream.getTracks().forEach(track => track.stop());
-
         // AR 및 공간 트래킹 변수 셋팅
         isARModeActive = true;
         hasPrintedOnce = false;
@@ -1828,6 +1810,20 @@
         
         document.body.appendChild(sceneEl);
 
+        // 💡 [모바일 자동재생 세이프가드] 
+        // 모바일 브라우저 정책으로 인해 비디오가 로드된 후 플레이되지 않고 일시정지 상태에 잠기는 것을 방지합니다.
+        window.arPlaySafeguardInterval = setInterval(() => {
+          const videos = document.querySelectorAll('video');
+          videos.forEach(v => {
+            if (v.paused) {
+              v.setAttribute('playsinline', 'true');
+              v.setAttribute('webkit-playsinline', 'true');
+              v.muted = true;
+              v.play().catch(e => console.log("Safeguard play failed:", e));
+            }
+          });
+        }, 200);
+
         // 마커 감지(markerFound) 및 손실(markerLost) 리스너 와이어링
         markerEl.addEventListener('markerFound', () => {
           console.log("Marker Found!");
@@ -1842,6 +1838,9 @@
             cityStage.classList.add('show');
             cityStage.style.opacity = '1';
           }
+
+          // 마커 감지 후 조도/색조 분석 강제 호출 (환경 분석 대기 상태 해제)
+          analyzeDeskEnvironment();
           
           // 마커 최초 발견 시 3D 프린팅 자동 트리거!
           if (!hasPrintedOnce) {
@@ -1898,9 +1897,12 @@
     }
 
     function stopAR() {
-      // 1. 진행 중인 애니메이션 프레임 해제
+      // 1. 진행 중인 애니메이션 프레임 및 타이머 해제
       if (printAnimId) cancelAnimationFrame(printAnimId);
       if (wobbleAnimId) cancelAnimationFrame(wobbleAnimId);
+      if (window.arPlaySafeguardInterval) {
+        clearInterval(window.arPlaySafeguardInterval);
+      }
       
       isARModeActive = false;
       markerVisible = false;
